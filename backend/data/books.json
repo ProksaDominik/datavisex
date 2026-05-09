@@ -1,0 +1,26 @@
+[
+  {
+    "title": "Foundation",
+    "genre": "Science Fiction",
+    "year_of_production": 1951,
+    "author_id": 1
+  },
+  {
+    "title": "I, Robot",
+    "genre": "Science Fiction",
+    "year_of_production": 1950,
+    "author_id": 1
+  },
+  {
+    "title": "Murder on the Orient Express",
+    "genre": "Mystery",
+    "year_of_production": 1934,
+    "author_id": 2
+  },
+  {
+    "title": "One Hundred Years of Solitude",
+    "genre": "Magical Realism",
+    "year_of_production": 1967,
+    "author_id": 3
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Isaac Asimov",
+    "bio": "Prolific science fiction writer and professor of biochemistry.",
+    "age": 72,
+    "country": "United States"
+  },
+  {
+    "name": "Agatha Christie",
+    "bio": "Famous English writer known for her detective novels and short story collections.",
+    "age": 85,
+    "country": "United Kingdom"
+  },
+  {
+    "name": "Gabriel García Márquez",
+    "bio": "Colombian novelist and one of the most significant authors of the 20th century.",
+    "age": 87,
+    "country": "Colombia"
+  }
+]
