@@ -11,6 +11,11 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
 
+
+# Comment out your postgres line
+
+
+
 # Build the connection URL
 DATABASE_URL = (
     f"postgresql+psycopg://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
