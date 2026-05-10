@@ -1,135 +1,156 @@
 import gradio as gr
 import httpx
 import pandas as pd
+import plotly.express as px
+from typing import Tuple
 
-# The address of our backend
 API_URL = "http://127.0.0.1:8000"
 
-# --- HELPER FUNCTIONS ---
+# --------------------------------------- DATA FETCHING (SAFE MODE) ------------------------------------------#
 
-def fetch_authors():
+def fetch_authors() -> pd.DataFrame:
     try:
-        response = httpx.get(f"{API_URL}/authors/", timeout=2)
+        response = httpx.get(f"{API_URL}/authors/", timeout=2.0)
         data = response.json()
-        # "Functionalities" mapped to Authors
-        return pd.DataFrame(data, columns=["id", "name", "bio", "age", "country"])
-    except:
+        if not data:
+            return pd.DataFrame(columns=["id", "name", "bio", "age", "country"])
+        return pd.DataFrame(data)
+    except Exception as e:
+        print(f"Author Fetch Error: {e}")
         return pd.DataFrame(columns=["id", "name", "bio", "age", "country"])
 
-def fetch_books(choice='All'):
+def fetch_books() -> pd.DataFrame:
     try:
-        response = httpx.get(f"{API_URL}/books/", timeout=2)
+        response = httpx.get(f"{API_URL}/books/", timeout=2.0)
         data = response.json()
-        # "Robots" mapped to Books
-        dataframe = pd.DataFrame(data, columns=["id", "title", "genre", "year_of_production", "author_id"])
-        if choice == 'All' or dataframe.empty:
-            return dataframe
-        return dataframe[dataframe['genre'] == choice]
-    except:
+        if not data:
+            return pd.DataFrame(columns=["id", "title", "genre", "year_of_production", "author_id"])
+        return pd.DataFrame(data)
+    except Exception as e:
+        print(f"Book Fetch Error: {e}")
         return pd.DataFrame(columns=["id", "title", "genre", "year_of_production", "author_id"])
 
-def create_author(name, bio, age, country):
-    payload = {
-        "name": name,
-        "bio": bio,
-        "age": int(age),
-        "country": country
-    }
-    httpx.post(f"{API_URL}/authors/", json=payload)
+# --------------------------------------- LOGIC FUNCTIONS ------------------------------------------#
+
+def add_author(name, bio, age, country):
+    try:
+        httpx.post(f"{API_URL}/authors/", json={"name": name, "bio": bio, "age": int(age), "country": country}, timeout=3.0)
+        gr.Info(f"Author '{name}' added!")
+    except:
+        gr.Error("Failed to add author. Is the backend running?")
     return fetch_authors()
 
-def create_book(title, genre, year, author_id):
-    payload = {
-        "title": title,
-        "genre": genre,
-        "year_of_production": int(year),
-        "author_id": int(author_id)
-    }
-    httpx.post(f"{API_URL}/books/", json=payload)
+def delete_author(aid):
+    try:
+        httpx.delete(f"{API_URL}/authors/{int(aid)}", timeout=3.0)
+        gr.Warning(f"Author ID {aid} deleted.")
+    except:
+        gr.Error("Delete failed.")
+    return fetch_authors()
+
+def add_book(title, genre, year, aid):
+    try:
+        res = httpx.post(f"{API_URL}/books/", json={"title": title, "genre": genre, "year_of_production": int(year), "author_id": int(aid)}, timeout=3.0)
+        if res.status_code != 200 and res.status_code != 201:
+            gr.Warning(f"Error: {res.text}")
+        else:
+            gr.Info(f"Book '{title}' added!")
+    except:
+        gr.Error("Connection error.")
     return fetch_books()
 
-def update_book(title, genre, author_id):
-    # Mapping "update_robot" logic to books
-    payload = {
-        "title": title,
-        "genre": genre,
-        "author_id": int(author_id)
-    }
-    httpx.put(f"{API_URL}/books/", json=payload)
+def delete_book(bid):
+    try:
+        httpx.delete(f"{API_URL}/books/{int(bid)}", timeout=3.0)
+        gr.Warning(f"Book ID {bid} deleted.")
+    except:
+        gr.Error("Delete failed.")
     return fetch_books()
 
-# --- THE RED THEME ---
-red_theme = gr.themes.Soft(primary_hue='red', secondary_hue='gray')
+def make_charts():
+    authors = fetch_authors()
+    books = fetch_books()
+    
+    if books.empty or "genre" not in books.columns:
+        empty_fig = px.scatter(title="No Data for Charts")
+        return empty_fig, empty_fig
 
-with gr.Blocks(theme=red_theme) as demo:
-    with gr.Row():
-        with gr.Column():
-            gr.Markdown("# 📚 Library Control Dashboard")
-            gr.Markdown(f"### Track books, add authors, and manage library data. The UI reads from {API_URL}")
+    # Pie Chart
+    pie = px.pie(books, names='genre', title="Books by Genre", 
+                 color_discrete_sequence=px.colors.sequential.Reds_r, hole=0.3)
+    
+    # Bar Chart (Counts per genre)
+    counts = books['genre'].value_counts().reset_index()
+    counts.columns = ['Genre', 'Count']
+    bar = px.bar(counts, x='Genre', y='Count', title="Genre Popularity", color='Genre',
+                 color_discrete_sequence=['#ff4b4b'])
+    
+    return pie, bar
+
+# --------------------------------------- GRADIO UI ------------------------------------------#
+
+custom_theme = gr.themes.Soft(
+    primary_hue="red",
+    secondary_hue="gray",
+    font=[gr.themes.GoogleFont("Inconsolata"), "Arial", "sans-serif"],
+)
+
+with gr.Blocks(theme=custom_theme) as demo:
+    gr.Markdown("# 📚 Library Control Dashboard (Red Edition)")
+
+    with gr.Tab("📊 Analytics"):
+        with gr.Row():
+            chart_pie = gr.Plot()
+            chart_bar = gr.Plot()
+        refresh_charts = gr.Button("🔄 Refresh Charts", variant="primary")
         
-        with gr.Column():
-            gr.Markdown("### API Status")
-            gr.Markdown(f'Connected to {API_URL}')
-            # Safety checks for stats
-            try:
-                num_books = len(fetch_books())
-                num_authors = len(fetch_authors())
-            except:
-                num_books, num_authors = 0, 0
-            gr.Markdown(f" - Books loaded: {num_books}")
-            gr.Markdown(f" - Authors loaded: {num_authors}")
+    with gr.Tab("✒️ Manage Authors"):
+        with gr.Row():
+            with gr.Column(scale=3):
+                auth_table = gr.DataFrame(value=pd.DataFrame(columns=["id", "name", "bio", "age", "country"]), interactive=False)
+                refresh_auth = gr.Button("🔄 Refresh Table")
+            with gr.Column(scale=1):
+                gr.Markdown("### Add New Author")
+                in_name = gr.Textbox(label="Name")
+                in_bio = gr.Textbox(label="Bio")
+                in_age = gr.Number(label="Age", value=30)
+                in_country = gr.Textbox(label="Country")
+                btn_add_auth = gr.Button("Add Author", variant="primary")
+                gr.Markdown("---")
+                in_del_auth = gr.Number(label="ID to Delete")
+                btn_del_auth = gr.Button("Delete Author", variant="stop")
 
-    with gr.Tab("Overview"):
+    with gr.Tab("📖 Manage Books"):
         with gr.Row():
-            gr.Markdown("## Current Library Setup")
-        with gr.Row():
-            with gr.Column():
-                # We use a static list or fetch safely to prevent startup freeze
-                genre_dropdown = gr.Dropdown(label="Filter by Genre", choices=['All'], value='All', interactive=True)
-            with gr.Column():
-                refresh_btn = gr.Button("Refresh Overview", variant="primary")
-        
-        with gr.Column():
-            gr.Markdown("### Books (Robots)")
-            book_table = gr.DataFrame(fetch_books(), interactive=False)
-            gr.Markdown("### Authors (Functionalities)")
-            author_table = gr.DataFrame(fetch_authors(), interactive=False)
-            
-            refresh_btn.click(fetch_books, outputs=book_table)
-            refresh_btn.click(fetch_authors, outputs=author_table)
+            with gr.Column(scale=3):
+                book_table = gr.DataFrame(value=pd.DataFrame(columns=["id", "title", "genre", "year_of_production", "author_id"]), interactive=False)
+                refresh_book = gr.Button("🔄 Refresh Table")
+            with gr.Column(scale=1):
+                gr.Markdown("### Add New Book")
+                in_title = gr.Textbox(label="Title")
+                in_genre = gr.Textbox(label="Genre")
+                in_year = gr.Number(label="Year", value=2024)
+                in_aid = gr.Number(label="Author ID", value=1)
+                btn_add_book = gr.Button("Add Book", variant="primary")
+                gr.Markdown("---")
+                in_del_book = gr.Number(label="ID to Delete")
+                btn_del_book = gr.Button("Delete Book", variant="stop")
 
-    with gr.Tab("Add Book"):
-        gr.Markdown("## Insert a new book")
-        with gr.Row():
-            title_input = gr.Textbox(label="Title", placeholder="Enter book title")
-            genre_input = gr.Textbox(label="Genre", placeholder="Enter genre")
-            year_input = gr.Number(label="Year", value=2024)
-            auth_id_input = gr.Number(label="Author ID", value=1)
-        with gr.Row():
-            add_book_btn = gr.Button("Create Book", variant="primary")
-            add_book_btn.click(create_book, inputs=[title_input, genre_input, year_input, auth_id_input], outputs=book_table)
+    # --- EVENT LOGIC ---
+    refresh_auth.click(fetch_authors, outputs=auth_table)
+    btn_add_auth.click(add_author, inputs=[in_name, in_bio, in_age, in_country], outputs=auth_table)
+    btn_del_auth.click(delete_author, inputs=[in_del_auth], outputs=auth_table)
 
-    with gr.Tab("Add Author"):
-        gr.Markdown("## Insert a new author")
-        with gr.Row():
-            name_input_auth = gr.Textbox(label="Name", placeholder="Enter author name")
-            bio_input_auth = gr.Textbox(label="Bio", placeholder="Enter bio")
-            age_input_auth = gr.Number(label="Age", value=30)
-            country_input_auth = gr.Textbox(label="Country", placeholder="Enter country")
-        with gr.Row():
-            add_author_btn = gr.Button("Create Author", variant="primary")
-            add_author_btn.click(create_author, inputs=[name_input_auth, bio_input_auth, age_input_auth, country_input_auth], outputs=author_table)
-
-    with gr.Tab("Manage Book Author"):
-        gr.Markdown("## Update the author of a book")
-        with gr.Row():
-            # Using simple text/number inputs to prevent the dropdown startup freeze
-            book_title_update = gr.Textbox(label="Book Title")
-            new_author_id = gr.Number(label="New Author ID", value=1)
-            book_genre_update = gr.Textbox(label="Genre")
-        with gr.Row():
-            update_btn = gr.Button("Update Relationship", variant="primary")
-            update_btn.click(update_book, inputs=[book_title_update, book_genre_update, new_author_id], outputs=book_table)
+    refresh_book.click(fetch_books, outputs=book_table)
+    btn_add_book.click(add_book, inputs=[in_title, in_genre, in_year, in_aid], outputs=book_table)
+    btn_del_book.click(delete_book, inputs=[in_del_book], outputs=book_table)
+    
+    refresh_charts.click(make_charts, outputs=[chart_pie, chart_bar])
+    
+    # Load data and charts on startup
+    demo.load(fetch_authors, outputs=auth_table)
+    demo.load(fetch_books, outputs=book_table)
+    demo.load(make_charts, outputs=[chart_pie, chart_bar])
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_port=7861)
